@@ -23,6 +23,8 @@ sign digest=SHA-256 // подписываем лицензию нашим клю
 
 dumpPublicKey // получаем два страшных блока из массива байт, второй нужно копировать и намертво вставить в лицензируемое приложение, чтобы пользователи не могли его поменять, это важно. Приложение будет сверять лицензию с помощью этого публичного ключа
 
+dumpLicense // посмотреть что получилось
+
 saveLicense format=BINARY licenseSigned.lic // сохраняем лицензию на диск (всё сохраняется в директории, откуда запускали прогу)
 ```
 
@@ -35,8 +37,125 @@ saveLicense format=BINARY licenseSigned.lic // сохраняем лицензи
 </dependency>
 ```
 
-4. Создаём например компонент
+4. Итоговый компонент выглядит примерно так:
+```
+@Component
+@NoArgsConstructor
+public class LicenseWorker implements ApplicationRunner {
 
+    private static final Logger logger = LoggerFactory.getLogger(CncServerApplication.class);
+
+    @Getter
+    private static int machinesMaximum = 0;
+
+    private static final byte [] public_key = new byte[] {
+            (byte)0x52,
+            (byte)0x53, (byte)0x41, (byte)0x00, (byte)0x30, (byte)0x5C, (byte)0x30, (byte)0x0D, (byte)0x06,
+            (byte)0x09, (byte)0x2A, (byte)0x86, (byte)0x48, (byte)0x86, (byte)0xF7, (byte)0x0D, (byte)0x01,
+            (byte)0x01, (byte)0x01, (byte)0x05, (byte)0x00, (byte)0x03, (byte)0x4B, (byte)0x00, (byte)0x30,
+            (byte)0x48, (byte)0x02, (byte)0x41, (byte)0x00, (byte)0x8E, (byte)0x71, (byte)0x3B, (byte)0xE9,
+            (byte)0xF8, (byte)0x77, (byte)0x67, (byte)0xA9, (byte)0x00, (byte)0x97, (byte)0x73, (byte)0x18,
+            (byte)0xF1, (byte)0x4E, (byte)0xA8, (byte)0x05, (byte)0xDB, (byte)0xF7, (byte)0x06, (byte)0xC3,
+            (byte)0xB6, (byte)0xEA, (byte)0xD5, (byte)0x14, (byte)0x40, (byte)0x4A, (byte)0x77, (byte)0x6C,
+            (byte)0x70, (byte)0x12, (byte)0x2E, (byte)0x9B, (byte)0x79, (byte)0x11, (byte)0x70, (byte)0x63,
+            (byte)0x98, (byte)0x0F, (byte)0x05, (byte)0x5C, (byte)0xF9, (byte)0x93, (byte)0x4B, (byte)0x23,
+            (byte)0xE0, (byte)0x8E, (byte)0x49, (byte)0x57, (byte)0xD9, (byte)0xD0, (byte)0xD0, (byte)0x56,
+            (byte)0xBA, (byte)0x9B, (byte)0xCE, (byte)0x6F, (byte)0x26, (byte)0xD5, (byte)0xF0, (byte)0xA2,
+            (byte)0x8F, (byte)0x68, (byte)0xF3, (byte)0x4D, (byte)0x02, (byte)0x03, (byte)0x01, (byte)0x00,
+            (byte)0x01,
+    };
+
+
+    @Override
+    public void run(ApplicationArguments args) {
+        checkLicense();
+    }
+
+    private void checkLicense() {
+
+        try {
+            //Для работы создаем экземпляр
+            License license;
+
+            //В директорию программы (корень) кладем наш файл license.lic и делаем путь к нему
+            String currentDir = System.getProperty("user.dir");
+            String licensePath = Paths.get(currentDir, "license.lic").toString();
+
+            try (LicenseReader reader = new LicenseReader(licensePath)) {
+                //Читаем и работаем с файлом лицензии
+                license = reader.read();
+
+                System.out.println("Лицензия подписана корректно: " + license.isOK(publickey));
+                System.out.println(license.getFeatures());
+
+                LocalDate expireDateForShow = LocalDate.parse(license.get("expireDate").getString(), DateTimeFormatter.ofPattern("dd-MM-yyyy"));
+                System.out.println("Лицензия актуальна (день не настал?) " + expireDateForShow.isAfter(LocalDate.now()));
+                System.out.println("Лицензия актуальна (день окончания сегодня?) " + expireDateForShow.isEqual(LocalDate.now()));
+
+                System.out.println("Название компании " + license.get("company").getString());
+                System.out.println("Наш дополнительный ограничивающий атрибут " + license.get("machinesMaximum").getInt());
+
+                if (!license.isOK(publickey)) {
+                    logger.info("Лицензия некорректно подписана. Завершаем работу приложения");
+                    System.exit(1);
+                }
+
+                Object isExpireDate = license.get("expireDate");
+
+                //Если лицензия содержит атрибут expireDate, то проверяем сроки
+                if (isExpireDate != null) {
+
+                    //Парсим атрибут
+                    LocalDate expireDate = LocalDate.parse(license.get("expireDate").getString(), DateTimeFormatter.ofPattern("dd-MM-yyyy"));
+
+                    // Если день окончания уже за  настал или настал
+                    if (expireDate.isBefore(LocalDate.now()) && !expireDate.isEqual(LocalDate.now())) {
+                        logger.info("Лицензия истекла. Завершаем работу приложения");
+                        System.exit(1);
+                    }
+                }
+                //Если лицензия не содержит сроков (атрибут expireDate), пропускаем (так обговорено с начальством)
+
+                //Парсим наш атрибут на количество станков, если не найдено, то приложение не будет разрешать добавлять станки
+                machinesMaximum = license.get("machinesMaximum").getInt();
+
+            } catch (Exception e) {
+                logger.error("Ошибка при работе с лицензией (чтение и внутренности): {}", e.getMessage());
+            }
+        }
+        catch (Exception e) {
+            logger.error("Ошибка при работе с лицензией (общая): {}", e.getMessage());
+        }
+    }
+
+}
+```
+
+5. Окей, работает, теперь нужно запомнить, что приватный и публичный ключ нужно сохранить где-то и пользоваться по мере надобности, допустим нужно создать ещё одну лицензию
+Идём снова в нашу программу, предварительно закончив предыдущий сеанс с ней:
+```
+cmd -> java -jar License3jrepl-3.1.5-jar-with-dependencies.jar
+
+newLicense // создаем новый экземпляр, он пока что в памяти приложения
+
+feature company:STRING=Zavod #2 // атрибут лицензии (название предприятия)
+
+feature expireDate:STRING=01-03-2025 // срок лицензии
+
+feature machinesMaximum:INT=10 // ещё один атрибут (например это ограничение количества станков)
+
+loadPublicKey format=BINARY myPublic.key // загружаем публичный ключ
+
+loadPrivateKey format=BINARY myPrivate.key // загружаем приватный ключ
+
+sign digest=SHA-256 // подписываем лицензию нашим ключем
+
+dumpLicense // посмотреть что получилось
+
+saveLicense format=BINARY license.lic // сохраняем лицензию на диск (всё сохраняется в директории, откуда запускали прогу)
+```
+
+---------------------------------------------------------------------------------
 ## Вариант №2: через своё отдельное приложение + спец. программу (в дальнейшем можно сделать цельное приложение под себя, просто нужно разобраться как самому создавать публичные и приватные ключи)
 1. Пихаем зависимость в нужные проекты:
 ```   
