@@ -37,7 +37,7 @@ saveLicense format=BINARY licenseSigned.lic // сохраняем лицензи
 </dependency>
 ```
 
-4. Итоговый компонент выглядит примерно так:
+4. Итоговый компонент в нашем приложении выглядит примерно так:
 ```
 @Component
 @NoArgsConstructor
@@ -121,10 +121,12 @@ public class LicenseWorker implements ApplicationRunner {
 
             } catch (Exception e) {
                 logger.error("Ошибка при работе с лицензией (чтение и внутренности): {}", e.getMessage());
+		System.exit(1);
             }
         }
         catch (Exception e) {
             logger.error("Ошибка при работе с лицензией (общая): {}", e.getMessage());
+	    System.exit(1);
         }
     }
 
