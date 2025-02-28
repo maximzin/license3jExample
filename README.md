@@ -1,21 +1,61 @@
 ## Инструкция по работе с механизмом лицензий:
 
+
+## Вариант №1: через специальное приложение
+1. Скачиваем приложение: https://github.com/verhas/license3jrepl (нужно скачать .jar) и запускаем
+```
+cmd -> java -jar License3jrepl-3.1.5-jar-with-dependencies.jar
+```
+
+2. Далее такой набор команд
+```
+newLicense // создаем новый экземпляр, он пока что в памяти приложения
+
+generateKeys RSA size=512 format=BINARY public=myPublic.key private=myPrivate.key // набор ключей для подписи/сверки, они сразу окажутся и на диске и в памяти
+
+feature company:STRING=Zavod #1 // атрибут лицензии (название предприятия)
+
+feature expireDate:STRING=28-03-2025 // срок лицензии
+
+feature machinesMaximum:INT=5 // ещё один атрибут (например это ограничение количества станков)
+
+sign digest=SHA-256 // подписываем лицензию нашим ключем
+
+dumpPublicKey // получаем два страшных блока из массива байт, второй нужно копировать и намертво вставить в лицензируемое приложение, чтобы пользователи не могли его поменять, это важно. Приложение будет сверять лицензию с помощью этого публичного ключа
+
+saveLicense format=BINARY licenseSigned.lic // сохраняем лицензию на диск (всё сохраняется в директории, откуда запускали прогу)
+```
+
+3. Вставляем в наш проект, где нужен механизм лицензий зависимость:
+```
+<dependency>
+	<groupId>com.javax0.license3j</groupId>
+	<artifactId>license3j</artifactId>
+	<version>3.3.0</version>
+</dependency>
+```
+
+4. Создаём например компонент
+
+## Вариант №2: через своё отдельное приложение + спец. программу (в дальнейшем можно сделать цельное приложение под себя, просто нужно разобраться как самому создавать публичные и приватные ключи)
 1. Пихаем зависимость в нужные проекты:
 ```   
 <dependency>
 	<groupId>com.javax0.license3j</groupId>
 	<artifactId>license3j</artifactId>
-	<version>3.3.0</version
-</dependency
+	<version>3.3.0</version>
+</dependency>
 ```
 ```
   + скачиваем jar-ку с https://github.com/verhas/license3jrepl (спец приложуха, облегчающая жизнь)
 ```
 
 2. Создаём файл лицензии через отдельный проект для лицензий:
-```License newLicense = new License();```
+```
+License newLicense = new License();
+```
    
-3. Добавляем features (информация типа (названия предприятия), какое-нибудь значение, которое хотим проверять)
+4. Добавляем features (информация типа (названия предприятия), какое-нибудь значение, которое хотим проверять)
 ```
 Feature feature1 = Feature.Create.stringFeature("Company name", "Zavod №3");
 Feature feature2 = Feature.Create.intFeature("MachinesCount", 10);
